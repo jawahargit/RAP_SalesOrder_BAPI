@@ -1,0 +1,1205 @@
+CLASS lhc_so_header DEFINITION INHERITING FROM cl_abap_behavior_handler.
+
+PUBLIC SECTION.
+     METHODS is_create_granted
+      IMPORTING VKORG TYPE VKORG OPTIONAL
+                VTWEG TYPE VTWEG OPTIONAL
+                SPART TYPE SPART OPTIONAL
+                VKBUR TYPE VKBUR OPTIONAL
+                VKGRP TYPE VKGRP OPTIONAL
+                KTAAR TYPE KTAAR OPTIONAL
+                ACTVT TYPE ACTIV_AUTH OPTIONAL
+      RETURNING VALUE(create_granted) TYPE abap_bool.
+
+    METHODS is_update_granted
+      IMPORTING VKORG TYPE VKORG OPTIONAL
+                VTWEG TYPE VTWEG OPTIONAL
+                SPART TYPE SPART OPTIONAL
+                VKBUR TYPE VKBUR OPTIONAL
+                VKGRP TYPE VKGRP OPTIONAL
+                KTAAR TYPE KTAAR OPTIONAL
+                ACTVT TYPE ACTIV_AUTH OPTIONAL
+      RETURNING VALUE(update_granted) TYPE abap_bool.
+
+  PRIVATE SECTION.
+
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR so_header RESULT result.
+
+    METHODS get_instance_authorizations FOR INSTANCE AUTHORIZATION
+      IMPORTING keys REQUEST requested_authorizations FOR so_header RESULT result.
+
+    METHODS get_global_authorizations FOR GLOBAL AUTHORIZATION
+      IMPORTING REQUEST requested_authorizations FOR so_header RESULT result.
+
+    METHODS precheck_create FOR PRECHECK
+      IMPORTING entities FOR CREATE so_header.
+
+    METHODS precheck_update FOR PRECHECK
+      IMPORTING entities FOR UPDATE so_header.
+
+    METHODS recalctotalnetamount FOR MODIFY
+      IMPORTING keys FOR ACTION so_header~recalctotalnetamount.
+
+    METHODS validatedistchannel FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatedistchannel.
+
+    METHODS validatedivision FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatedivision.
+
+    METHODS validatedoctype FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatedoctype.
+
+    METHODS validatesalesgroup FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatesalesgroup.
+
+    METHODS validatesalesoffice FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatesalesoffice.
+
+    METHODS validatesalesorg FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatesalesorg.
+
+    METHODS validatesoldtoparty FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validatesoldtoparty.
+
+    METHODS validateshiptoparty FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_header~validateshiptoparty.
+    METHODS get_global_features FOR GLOBAL FEATURES
+      IMPORTING REQUEST requested_features FOR so_header RESULT result.
+
+
+ENDCLASS.
+
+CLASS lhc_so_header IMPLEMENTATION.
+
+  METHOD get_instance_features.
+
+
+  ENDMETHOD.
+
+  METHOD get_instance_authorizations.
+  DATA:   update_requested TYPE abap_bool,
+          delete_requested TYPE abap_bool,
+          update_granted   TYPE abap_bool,
+          create_granted   TYPE abap_bool,
+          delete_granted   TYPE abap_bool.
+
+
+
+    READ ENTITIES OF ZSO_I_Header IN LOCAL MODE
+      ENTITY SO_Header
+        FIELDS ( SalesDocument SalesOrganization DistributionChannel OrganizationDivision OverallSDProcessStatus )
+        WITH CORRESPONDING #( keys )
+    RESULT DATA(soheaders)
+    FAILED failed.
+
+    CHECK soheaders IS NOT INITIAL.
+
+    "Select country_code and agency of corresponding persistent travel instance
+    "authorization  only checked against instance that have active persistence
+    "select from I_SalesDocument as Header
+    SELECT  FROM I_SalesDocument
+          FIELDS SalesDocument , SalesOrganization, DistributionChannel, OrganizationDivision, OverallSDProcessStatus
+          FOR ALL ENTRIES IN @soheaders
+          WHERE SalesDocument EQ @soheaders-SalesDocument
+          INTO  TABLE @DATA(lt_soheaders_auth).
+
+
+    "edit is treated like update
+    update_requested = COND #( WHEN requested_authorizations-%update                = if_abap_behv=>mk-on OR
+                                    requested_authorizations-%action-Edit           = if_abap_behv=>mk-on
+                               THEN abap_true ELSE abap_false ).
+
+    delete_requested = COND #( WHEN requested_authorizations-%delete                = if_abap_behv=>mk-on
+                               THEN abap_true ELSE abap_false ).
+
+
+    LOOP AT soheaders INTO DATA(lw_so).
+      "get Data in corresponding instance on persistent table
+      READ TABLE lt_soheaders_auth WITH KEY SalesDocument = lw_so-SalesDocument
+        ASSIGNING FIELD-SYMBOL(<soheaders_auth>).
+      "CHECK  <soheaders_auth> is ASSIGNED.
+      "Auth check for active instances that have before image on persistent table
+      IF <soheaders_auth> is ASSIGNED .
+        if <soheaders_auth>-OverallSDProcessStatus EQ 'C'.
+         APPEND VALUE #( %tky = lw_so-%tky
+                         %fail-cause = if_abap_behv=>cause-locked )
+                TO failed-so_header.
+            APPEND VALUE #(   %tky = lw_so-%tky
+                        %msg    =  new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                                    severity = if_abap_behv_message=>severity-error
+                                    v1 = 'Cannot Edit sales order. It already completed !' )
+                        "%element-SalesOrganization = if_abap_behv=>mk-on
+                        ) TO reported-so_header.
+         EXIT.
+        ENDIF.
+        "check auth for update
+        IF update_requested = abap_true.
+          update_granted = is_update_granted(  vkorg = <soheaders_auth>-SalesOrganization
+                                               vtweg = <soheaders_auth>-DistributionChannel
+                                               Spart = <soheaders_auth>-OrganizationDivision   ).
+        "  update_granted = abap_false.
+          IF update_granted = abap_false.
+                APPEND VALUE #( %tky = lw_so-%tky
+                         %fail-cause = if_abap_behv=>cause-unauthorized )
+                TO failed-so_header.
+                 APPEND VALUE #(   %tky = lw_so-%tky
+                        %msg    =  new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                                    severity = if_abap_behv_message=>severity-error
+                                    v1 = 'No authorization for update sales order' )
+                        "%element-SalesOrganization = if_abap_behv=>mk-on
+                        ) TO reported-so_header.
+          ENDIF.
+        ENDIF.
+
+        "check auth for delete
+
+        " operations on draft instances and on active instances that have no persistent before image (eg Update on newly created instance)
+        " create authorization is checked, for newly created instances
+      ELSE.
+
+        Check lw_so-SalesOrganization is not INITIAL and lw_so-DistributionChannel is not INITIAL
+              and lw_so-OrganizationDivision  is not INITIAL.
+
+        create_granted =  is_create_granted(   vkorg = lw_so-SalesOrganization
+                                               vtweg = lw_so-DistributionChannel
+                                               Spart = lw_so-OrganizationDivision   ).
+        update_granted = create_granted.
+        IF update_granted = abap_false.
+             APPEND VALUE #( %tky = lw_so-%tky
+                         %fail-cause = if_abap_behv=>cause-unauthorized )
+                TO failed-so_header.
+            APPEND VALUE #(   %tky = lw_so-%tky
+                        %msg    =  new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                                    severity = if_abap_behv_message=>severity-error
+                                    v1 = 'No authorization for create sales order' )
+                        "%element-SalesOrganization = if_abap_behv=>mk-on
+                        ) TO reported-so_header.
+        ENDIF.
+      ENDIF.
+
+      APPEND VALUE #( LET upd_auth = COND #( WHEN update_granted = abap_true THEN if_abap_behv=>auth-allowed
+                                             ELSE if_abap_behv=>auth-unauthorized )
+                          crt_auth = COND #( WHEN create_granted = abap_true THEN if_abap_behv=>auth-allowed
+                                             ELSE if_abap_behv=>auth-unauthorized )
+                          del_auth = COND #( WHEN delete_granted = abap_true THEN if_abap_behv=>auth-allowed
+                                             ELSE if_abap_behv=>auth-unauthorized )
+                      IN
+                       %tky = lw_so-%tky
+                       %update                = upd_auth
+                       %action-Edit           = upd_auth
+                       "%create                = crt_auth
+                      " %delete                = del_auth
+                    ) TO result.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD get_global_authorizations.
+
+
+  ENDMETHOD.
+ METHOD is_create_granted.
+
+    "For validation
+    IF VKORG IS SUPPLIED AND VTWEG is SUPPLIED and SPART is SUPPLIED.
+      AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' FIELD VKORG
+          ID    'VTWEG' FIELD VTWEG
+          ID    'SPART' FIELD SPART
+          ID    'ACTVT'      FIELD '01'.
+      create_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+
+      "Simulation for full authorization
+      "(not to be used in productive code)
+      "create_granted = abap_true.
+    ELSE.
+       AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' DUMMY
+          ID    'VTWEG' DUMMY
+          ID    'SPART' DUMMY
+          ID    'ACTVT'      FIELD '01'.
+      create_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_update_granted.
+    "For instance auth
+    IF VKORG IS SUPPLIED AND VTWEG is SUPPLIED and SPART is SUPPLIED.
+      AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' FIELD VKORG
+          ID    'VTWEG' FIELD VTWEG
+          ID    'SPART' FIELD SPART
+          ID    'ACTVT'      FIELD '02'.
+      update_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+
+      "Simulation for full authorization
+      "(not to be used in productive code)
+      "update_granted = abap_true.
+
+    ELSE.
+      AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' DUMMY
+          ID    'VTWEG' DUMMY
+          ID    'SPART' DUMMY
+          ID    'ACTVT'      FIELD '02'.
+      update_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+
+      "Simulation for full authorization
+      "(not to be used in productive code)
+      "update_granted = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+  METHOD precheck_create.
+  ENDMETHOD.
+
+  METHOD precheck_update.
+  ENDMETHOD.
+
+  METHOD recalctotalnetamount.
+
+    TYPES: BEGIN OF ty_amount_per_currencycode,
+             amount        TYPE /dmo/total_price,
+             currency_code TYPE /dmo/currency_code,
+           END OF ty_amount_per_currencycode.
+
+    DATA: lt_amount_per_currencycode TYPE STANDARD TABLE OF ty_amount_per_currencycode.
+
+    " Read all relevant travel instances.
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( totalnetamount transactioncurrency )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_headers)
+         FAILED failed.
+
+    DELETE so_headers WHERE transactioncurrency IS INITIAL.
+    CLEAR : lt_amount_per_currencycode.
+    LOOP AT so_headers ASSIGNING FIELD-SYMBOL(<fs_so_header>).
+      " Set the start for the calculation by adding the booking fee.
+      "lt_amount_per_currencycode = VALUE #( ( amount        = <fs_so_header>-TotalNetAmount
+      "                                    currency_code = <fs_so_header>-TransactionCurrency ) ).
+
+      " Read all associated bookings and add them to the total price.
+      READ ENTITIES OF zso_i_header IN LOCAL MODE
+        ENTITY so_header BY \_item
+          FIELDS ( netamount transactioncurrency )
+        WITH VALUE #( ( %tky = <fs_so_header>-%tky ) )
+        RESULT DATA(so_items).
+
+      LOOP AT so_items ASSIGNING FIELD-SYMBOL(<ls_item_data>) WHERE transactioncurrency IS NOT INITIAL.
+        <ls_item_data>-netamount = <ls_item_data>-orderquantity * <ls_item_data>-netpriceamount.
+        COLLECT VALUE ty_amount_per_currencycode( amount        = <ls_item_data>-netamount
+                                                  currency_code = <ls_item_data>-transactioncurrency )
+                                                  INTO lt_amount_per_currencycode.
+      ENDLOOP.
+
+      CLEAR <fs_so_header>-totalnetamount.
+      LOOP AT lt_amount_per_currencycode INTO DATA(ls_amount_per_currencycode).
+        " If needed do a Currency Conversion
+        IF ls_amount_per_currencycode-currency_code = <fs_so_header>-transactioncurrency.
+          <fs_so_header>-totalnetamount += ls_amount_per_currencycode-amount.
+        ELSE.
+          /dmo/cl_flight_amdp=>convert_currency(
+            EXPORTING
+              iv_amount               = ls_amount_per_currencycode-amount
+              iv_currency_code_source = ls_amount_per_currencycode-currency_code
+              iv_currency_code_target = <fs_so_header>-transactioncurrency
+              iv_exchange_rate_date   = cl_abap_context_info=>get_system_date( )
+            IMPORTING
+              ev_amount               = DATA(lv_total_price_per_curr)
+          ).
+          <fs_so_header>-totalnetamount += lv_total_price_per_curr.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    " write back the modified total_price of travels
+    MODIFY ENTITIES OF zso_i_header IN LOCAL MODE
+      ENTITY so_header
+        UPDATE FIELDS ( totalnetamount )
+        WITH CORRESPONDING #( so_headers ).
+  ENDMETHOD.
+
+
+  METHOD validatedistchannel.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( distributionchannel )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-distributionchannel IS NOT INITIAL.
+        SELECT SINGLE FROM i_distributionchannel  FIELDS distributionchannel
+                                                  WHERE distributionchannel = @<lf_validate>-distributionchannel
+                                                  INTO @DATA(lv_distchannel).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Distribution Channel' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Distribution Channel' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatedivision.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( salesorganization distributionchannel organizationdivision )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-organizationdivision IS NOT INITIAL.
+        SELECT SINGLE FROM i_division FIELDS division
+                                      WHERE  division = @<lf_validate>-organizationdivision
+                                      INTO @DATA(lv_sdivision).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Division' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Division' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatedoctype.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( salesdocumenttype )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-salesdocumenttype IS NOT INITIAL.
+        SELECT SINGLE FROM i_salesdocumenttype  FIELDS salesdocumenttype
+                                                WHERE salesdocumenttype  = @<lf_validate>-salesdocumenttype
+                                                INTO @DATA(lv_doctype).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Document Type' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Document Type' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatesalesgroup.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( salesgroup )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-salesgroup IS NOT INITIAL.
+        SELECT SINGLE FROM i_salesgroup   FIELDS salesgroup
+                                          WHERE salesgroup = @<lf_validate>-salesgroup
+                                          INTO @DATA(lv_sgroup).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Sales Group' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatesalesoffice.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( salesoffice )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-salesoffice IS NOT INITIAL.
+        SELECT SINGLE FROM i_salesoffice  FIELDS salesoffice
+                                          WHERE salesoffice = @<lf_validate>-salesoffice
+                                          INTO @DATA(lv_soffice).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Sales Office' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatesalesorg.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( salesorganization )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-salesorganization IS NOT INITIAL.
+        SELECT SINGLE FROM i_salesorganization FIELDS salesorganization
+                                               WHERE salesorganization = @<lf_validate>-salesorganization
+                                               INTO @DATA(lv_sorg).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Sales Organization' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Sales Organization' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatesoldtoparty.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( soldtoparty )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-soldtoparty IS NOT INITIAL.
+        SELECT SINGLE FROM i_customer FIELDS customer
+                                      WHERE customer = @<lf_validate>-soldtoparty
+                                      INTO @DATA(lv_cust).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Sold To Party' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Sold To Party' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validateshiptoparty.
+    " Read selected SO
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_header
+            FIELDS ( customer )
+            WITH CORRESPONDING #( keys )
+         RESULT DATA(so_validate).
+
+    LOOP AT so_validate ASSIGNING FIELD-SYMBOL(<lf_validate>).
+      IF <lf_validate>-customer IS NOT INITIAL.
+        SELECT SINGLE FROM i_customer FIELDS customer
+                                      WHERE customer = @<lf_validate>-customer
+                                      INTO @DATA(lv_cust).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Ship To Party' )
+                 ) TO reported-so_header.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_validate>-%tky ) TO failed-so_header.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Ship To Party' )
+               ) TO reported-so_header.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_global_features.
+  "READ ENTITIES OF ZI_SO_Header IN LOCAL MODE
+   "    ENTITY SO_Header
+        " ALL FIELDS
+    "      FIELDS ( SalesDocument SalesOrganization DistributionChannel OrganizationDivision  OverallSDProcessStatus )
+     "    WITH CORRESPONDING #( keys )
+      "   RESULT DATA(entities).
+
+    "result = VALUE #( FOR entity IN entities
+                  "  ( %tky                   = entity-%tky
+                      "%update                = COND #( WHEN entity-OverallSDProcessStatus EQ 'A'
+                       "                               THEN if_abap_behv=>fc-o-enabled
+                        "                              ELSE if_abap_behv=>fc-o-disabled )
+
+                       "                                  ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lhc_so_item DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+
+    METHODS calculatetotalnetamount FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR so_item~calculatetotalnetamount.
+
+    METHODS getinfomaterial FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR so_item~getinfomaterial.
+
+    METHODS validatematerial FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_item~validatematerial.
+
+    METHODS validatequantity FOR VALIDATE ON SAVE
+      IMPORTING keys FOR so_item~validatequantity.
+
+ENDCLASS.
+
+CLASS lhc_so_item IMPLEMENTATION.
+
+  METHOD calculatetotalnetamount.
+    " Read all parent UUIDs
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+      ENTITY so_item BY \_header
+        FIELDS ( salesdocument  )
+        WITH CORRESPONDING #(  keys  )
+      RESULT DATA(so_data).
+    " Trigger Re-Calculation on Root Node
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    " Read all associated bookings and add them to the total price.
+    DATA lt_update TYPE TABLE FOR UPDATE zso_i_header\\so_item.
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+      ENTITY so_item
+        FIELDS ( netamount transactioncurrency )
+       WITH CORRESPONDING #( keys )
+      RESULT DATA(so_items).
+
+    LOOP AT so_items ASSIGNING FIELD-SYMBOL(<ls_item_data>) WHERE transactioncurrency IS NOT INITIAL.
+      <ls_item_data>-netamount = <ls_item_data>-orderquantity * <ls_item_data>-netpriceamount.
+      APPEND VALUE #( %tky = <ls_item_data>-%tky
+                      netamount = <ls_item_data>-netamount ) TO lt_update.
+    ENDLOOP.
+
+    "update involved instances
+    MODIFY ENTITIES OF zso_i_header IN LOCAL MODE
+     ENTITY so_item
+        UPDATE FIELDS ( netamount )
+       WITH CORRESPONDING #( lt_update ).
+
+    """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+    MODIFY ENTITIES OF zso_i_header IN LOCAL MODE
+      ENTITY so_header
+        EXECUTE recalctotalnetamount
+          FROM CORRESPONDING  #( so_data )
+    REPORTED DATA(action_reported).
+    reported = CORRESPONDING #( DEEP action_reported ).
+
+
+  ENDMETHOD.
+
+  METHOD getinfomaterial.
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+        ENTITY so_item
+        FIELDS ( material salesdocumentitemtext orderquantityunit )
+        WITH CORRESPONDING #( keys )
+        RESULT DATA(so_material).
+
+    LOOP AT so_material ASSIGNING FIELD-SYMBOL(<lf_material>) WHERE material IS NOT INITIAL.
+      SELECT SINGLE
+        FROM i_material
+        FIELDS materialbaseunit
+      WHERE material = @<lf_material>-material
+      INTO @DATA(lv_materialbaseunit).
+      IF sy-subrc IS NOT INITIAL.
+        CLEAR lv_materialbaseunit.
+      ELSE.
+
+      ENDIF.
+
+      SELECT SINGLE
+        FROM i_materialtext
+        FIELDS materialname
+      WHERE material = @<lf_material>-material
+        AND language = @sy-langu
+      INTO @DATA(lv_materialname).
+      IF sy-subrc IS NOT INITIAL.
+        CLEAR lv_materialname.
+      ENDIF.
+
+      DATA lt_update TYPE TABLE FOR UPDATE zso_i_header\\so_item.
+      LOOP AT so_material ASSIGNING FIELD-SYMBOL(<ls_so_material>) WHERE material IS NOT INITIAL.
+        <ls_so_material>-salesdocumentitemtext = lv_materialname.
+        <ls_so_material>-orderquantityunit = lv_materialbaseunit.
+         <ls_so_material>-BaseUnit = lv_materialbaseunit.
+         <ls_so_material>-TransactionCurrency = 'EUR'.
+         <ls_so_material>-NetPriceAmount = '1000'.
+        APPEND VALUE #( %tky = <ls_so_material>-%tky
+                        salesdocumentitemtext = <ls_so_material>-salesdocumentitemtext
+                        orderquantityunit = <ls_so_material>-orderquantityunit
+                        BaseUnit = <ls_so_material>-BaseUnit
+                        TransactionCurrency =  <ls_so_material>-TransactionCurrency
+                        NetPriceAmount = <ls_so_material>-NetPriceAmount
+                      ) TO lt_update.
+      ENDLOOP.
+
+      IF lt_update[] IS NOT INITIAL.
+        "update involved instances
+        MODIFY ENTITIES OF zso_i_header IN LOCAL MODE
+         ENTITY so_item
+            UPDATE FIELDS ( salesdocumentitemtext orderquantityunit BaseUnit TransactionCurrency NetPriceAmount )
+           WITH CORRESPONDING #( lt_update ).
+      ENDIF.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD validatematerial.
+    READ ENTITIES OF zso_i_header IN LOCAL MODE
+        ENTITY so_item
+        FIELDS ( material )
+        WITH CORRESPONDING #( keys )
+        RESULT DATA(so_ivalidate).
+
+    LOOP AT so_ivalidate ASSIGNING FIELD-SYMBOL(<lf_ivalidate>).
+      IF <lf_ivalidate>-material IS NOT INITIAL.
+        SELECT SINGLE FROM i_material  FIELDS material
+                                       WHERE material = @<lf_ivalidate>-material
+                                       INTO @DATA(lv_matnr).
+        IF sy-subrc <> 0.
+          APPEND VALUE #( %tky = <lf_ivalidate>-%tky ) TO failed-so_item.
+          APPEND VALUE #(  %pid = '0'
+                %msg = new_message( id = 'ZRAP_SO_MSG'
+                                    number = '000'
+                severity = if_abap_behv_message=>severity-error
+                v1 = 'Invalid Material' )
+                 ) TO reported-so_item.
+        ENDIF.
+      ELSE.
+        APPEND VALUE #( %tky = <lf_ivalidate>-%tky ) TO failed-so_item.
+        APPEND VALUE #(  %pid = '0'
+              %msg = new_message( id = 'ZRAP_SO_MSG'
+                                  number = '000'
+              severity = if_abap_behv_message=>severity-error
+              v1 = 'Missing Material' )
+               ) TO reported-so_item.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD validatequantity.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lsc_zi_so_header DEFINITION INHERITING FROM cl_abap_behavior_saver_failed.
+  PROTECTED SECTION.
+
+    METHODS adjust_numbers REDEFINITION.
+
+    METHODS save_modified REDEFINITION.
+
+    METHODS cleanup_finalize REDEFINITION.
+  PRIVATE SECTION.
+   METHODS is_create_granted
+      IMPORTING VKORG TYPE VKORG OPTIONAL
+                VTWEG TYPE VTWEG OPTIONAL
+                SPART TYPE SPART OPTIONAL
+                VKBUR TYPE VKBUR OPTIONAL
+                VKGRP TYPE VKGRP OPTIONAL
+                KTAAR TYPE KTAAR OPTIONAL
+                ACTVT TYPE ACTIV_AUTH OPTIONAL
+      RETURNING VALUE(create_granted) TYPE abap_bool.
+ENDCLASS.
+
+CLASS lsc_zi_so_header IMPLEMENTATION.
+
+  METHOD adjust_numbers.
+
+
+  ENDMETHOD.
+
+  METHOD save_modified.
+
+    DATA: lt_message TYPE STANDARD TABLE OF bapiret2,
+          lv_vbeln   TYPE bapivbeln-vbeln.
+    DATA: ls_bapihead  TYPE bapisdh1,
+          ls_bapiheadx TYPE bapisdh1x,
+          ls_headdata  TYPE bapisdh1.
+    DATA: lt_bapiitem  TYPE STANDARD TABLE OF bapisditm,
+          ls_bapiitem  TYPE bapisditm,
+          ls_data      TYPE bapisditm,
+          lt_bapiitemx TYPE STANDARD TABLE OF bapisditmx,
+          ls_bapiitemx TYPE bapisditmx.
+    DATA: lt_partners     TYPE STANDARD TABLE OF bapiparnr,
+          ls_partners     TYPE bapiparnr,
+          lt_partnerx     TYPE STANDARD TABLE OF bapiparnrc,
+          ls_partnerx     TYPE bapiparnrc,
+          lv_flag_success TYPE char1.
+
+    DATA: lt_schedule_lines  TYPE STANDARD TABLE OF bapischdl,
+          ls_schedule_lines  TYPE bapischdl,
+          lt_schedule_linesx TYPE STANDARD TABLE OF bapischdlx,
+          ls_schedule_linesx TYPE bapischdlx.
+    DATA: ls_bapiheadc  TYPE bapisdhd1,
+          ls_bapiheadcx TYPE bapisdhd1x.
+    DATA: lv_item TYPE posnr_va.
+
+    " we will call the bpi for create/change sales order
+
+    IF create IS NOT INITIAL.
+        if create-so_header is INITIAL or  create-so_item is INITIAL.
+         APPEND VALUE #( %pid        = '0'
+                         %fail-cause = if_abap_behv=>cause-not_found )
+                TO failed-so_header.
+                APPEND VALUE #(
+                             %pid        = '0'
+                            %msg    =  new_message( id = 'ZRAP_SO_MSG'
+                                        number = '000'
+                                        severity = if_abap_behv_message=>severity-error
+                                        v1 = 'Please enter data for both header and line item!' )
+                            "%element-SalesOrganization = if_abap_behv=>mk-on
+                            ) TO reported-so_header.
+         RETURN.
+        ENDIF.
+        CHECK create-so_header is not INITIAL AND  create-so_item is NOT INITIAL.
+        if  create-so_header is not INITIAL.
+            Check create-so_header[ 1 ]-SalesOrganization is not INITIAL and create-so_header[ 1 ]-DistributionChannel is not INITIAL
+                  and create-so_header[ 1 ]-OrganizationDivision  is not INITIAL.
+
+
+            IF is_create_granted(   vkorg = create-so_header[ 1 ]-SalesOrganization
+                                                   vtweg = create-so_header[ 1 ]-DistributionChannel
+                                                   Spart = create-so_header[ 1 ]-OrganizationDivision   ) = abap_false.
+                APPEND VALUE #( %pid        = '0'
+                         %fail-cause = if_abap_behv=>cause-unauthorized )
+                TO failed-so_header.
+                APPEND VALUE #(
+                             %pid        = '0'
+                            %msg    =  new_message( id = 'ZRAP_SO_MSG'
+                                        number = '000'
+                                        severity = if_abap_behv_message=>severity-error
+                                        v1 = 'No authorization for create sales order' )
+                            "%element-SalesOrganization = if_abap_behv=>mk-on
+                            ) TO reported-so_header.
+             RETURN.
+         ENDIF.
+        ENDIF.
+      " header data
+      IF create-so_header[ 1 ]-salesdocumenttype IS NOT INITIAL.
+        ls_bapiheadc-doc_type = create-so_header[ 1 ]-salesdocumenttype.
+        ls_bapiheadcx-doc_type = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-completedeliveryisdefined IS NOT INITIAL.
+        ls_bapiheadc-compl_dlv = abap_true.
+        ls_bapiheadcx-compl_dlv = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-salesorganization IS NOT INITIAL.
+        ls_bapiheadc-sales_org = create-so_header[ 1 ]-salesorganization.
+        ls_bapiheadcx-sales_org = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-salesoffice IS NOT INITIAL.
+        ls_bapiheadc-sales_off = create-so_header[ 1 ]-salesoffice.
+        ls_bapiheadcx-sales_off = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-soldtoparty IS NOT INITIAL.
+        ls_partners-partn_role = 'AG'.
+        ls_partners-partn_numb = create-so_header[ 1 ]-soldtoparty.
+        APPEND ls_partners TO lt_partners.
+      ENDIF.
+      IF create-so_header[ 1 ]-customer IS NOT INITIAL.
+        ls_partners-partn_role = 'WE'.
+        ls_partners-partn_numb = create-so_header[ 1 ]-customer.
+        APPEND ls_partners TO lt_partners.
+      ENDIF.
+      IF create-so_header[ 1 ]-customerpaymentterms IS NOT INITIAL.
+        ls_bapiheadc-pmnttrms = create-so_header[ 1 ]-customerpaymentterms.
+        ls_bapiheadcx-pmnttrms = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-distributionchannel IS NOT INITIAL.
+        ls_bapiheadc-distr_chan = create-so_header[ 1 ]-distributionchannel.
+        ls_bapiheadcx-distr_chan = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-salesgroup IS NOT INITIAL.
+        ls_bapiheadc-sales_grp = create-so_header[ 1 ]-salesgroup.
+        ls_bapiheadcx-sales_grp = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-requesteddeliverydate IS NOT INITIAL.
+        ls_bapiheadc-req_date_h = create-so_header[ 1 ]-requesteddeliverydate.
+        ls_bapiheadcx-req_date_h = abap_true.
+      ENDIF.
+      IF create-so_header[ 1 ]-organizationdivision IS NOT INITIAL.
+        ls_bapiheadc-division = create-so_header[ 1 ]-organizationdivision.
+        ls_bapiheadcx-division = abap_true.
+      ENDIF.
+
+      LOOP AT create-so_item INTO DATA(ls_item).
+        lv_item = lv_item + 10.
+
+        ls_bapiitem-itm_number = lv_item.
+        ls_bapiitemx-itm_number = lv_item.
+
+        ls_bapiitem-material = ls_item-material.
+        ls_bapiitemx-material = abap_true.
+
+        IF ls_item-orderquantity IS NOT INITIAL.
+          ls_bapiitem-target_qty = ls_item-orderquantity.
+          ls_bapiitemx-target_qty = abap_true.
+        ENDIF.
+        IF ls_item-orderquantityunit IS NOT INITIAL.
+          ls_bapiitem-sales_unit = ls_item-orderquantityunit.
+          ls_bapiitemx-sales_unit = abap_true.
+        ELSE.
+          ls_bapiitem-sales_unit = 'ST'.
+          ls_bapiitemx-sales_unit = abap_true.
+        ENDIF.
+        "IF ls_item-NetPriceAmount IS NOT INITIAL.
+        "   ls_bapiitem-NET_WEIGHT = ls_item-NetPriceAmount.
+        "   ls_bapiitemx-NET_WEIGHT = abap_true.
+        "ENDIF.
+        "IF ls_item-TransactionCurrency IS NOT INITIAL.
+        "  ls_bapiitem-NET_WEIGHT = ls_item-TransactionCurrency.
+        "  ls_bapiitemx-NET_WEIGHT = abap_true.
+        "ENDIF.
+        IF ls_item-plant IS NOT INITIAL.
+          ls_bapiitem-plant = ls_item-plant.
+          ls_bapiitemx-plant = abap_true.
+        ENDIF.
+        IF ls_item-shippingpoint IS NOT INITIAL.
+          ls_bapiitem-ship_point = ls_item-shippingpoint.
+          ls_bapiitemx-ship_point = abap_true.
+        ENDIF.
+        IF ls_item-storagelocation IS NOT INITIAL.
+          ls_bapiitem-store_loc = ls_item-storagelocation.
+          ls_bapiitemx-store_loc = abap_true.
+        ENDIF.
+
+        ls_bapiitemx-updateflag = 'I'.
+
+        IF ls_bapiitem IS NOT INITIAL.
+          APPEND ls_bapiitem TO lt_bapiitem.
+          APPEND ls_bapiitemx TO lt_bapiitemx.
+          CLEAR: ls_bapiitem, ls_bapiitemx.
+        ENDIF.
+
+        ls_schedule_lines-itm_number = lv_item.
+        ls_schedule_lines-sched_line = '0001'.
+        ls_schedule_lines-req_qty    = ls_item-orderquantity.
+        APPEND ls_schedule_lines TO lt_schedule_lines.
+        CLEAR ls_schedule_lines.
+
+        ls_schedule_linesx-itm_number = lv_item.
+        ls_schedule_linesx-sched_line = '0001'.
+        ls_schedule_linesx-req_qty    = abap_true.
+        ls_schedule_linesx-updateflag = 'I'.
+        APPEND ls_schedule_linesx TO lt_schedule_linesx.
+        CLEAR ls_schedule_linesx.
+      ENDLOOP.
+
+      TRY.
+          CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2' DESTINATION 'NONE'
+            EXPORTING
+              order_header_in       = ls_bapiheadc
+              order_header_inx      = ls_bapiheadcx
+              int_number_assignment = 'X'
+            TABLES
+              return                = lt_message
+              order_items_in        = lt_bapiitem
+              order_items_inx       = lt_bapiitemx
+              order_partners        = lt_partners
+              order_schedules_in    = lt_schedule_lines
+              order_schedules_inx   = lt_schedule_linesx.
+          "process all messages
+          CLEAR lv_flag_success.
+
+          READ TABLE lt_message TRANSPORTING NO FIELDS
+                     WITH KEY type = 'E'.
+          IF  sy-subrc IS NOT INITIAL.
+            CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' DESTINATION 'NONE'
+              EXPORTING
+                wait = 'X'.
+            lv_flag_success = abap_true.
+            READ TABLE lt_message INTO DATA(ls_msg)
+              WITH KEY type = 'S' number = '311'.
+            APPEND VALUE #(  %pid = '0'
+                  %msg = new_message( id = 'V1'
+                                      number = '311'
+                  severity = if_abap_behv_message=>severity-success
+                  v1 = ls_msg-message )
+*                           %element-matnr_t = if_abap_behv=>mk-on
+                   ) TO reported-so_header.
+            EXIT.
+          ELSE.
+            CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK' DESTINATION 'NONE'.
+            LOOP AT lt_message ASSIGNING FIELD-SYMBOL(<ls_bapi_msg>) WHERE type = 'E'.
+              "Convert all messages
+              "DATA(lo_behv_msg) = new_msg_from_bapi( <ls_bapi_msg> ).
+              "Stop on error
+              APPEND VALUE #( %pid        = <ls_bapi_msg>-id
+                     %fail-cause = if_abap_behv=>cause-unauthorized )
+            TO failed-so_header.
+              APPEND VALUE #(  %pid = <ls_bapi_msg>-id
+                     %msg = new_message( id = 'V1'
+                                         number = <ls_bapi_msg>-number
+                     severity = if_abap_behv_message=>severity-error
+                     v1 = <ls_bapi_msg>-message
+                     v2 = <ls_bapi_msg>-message_v1
+                     v3 = <ls_bapi_msg>-message_v2
+                     v4 = <ls_bapi_msg>-message_v3 )
+*                           %element-matnr_t = if_abap_behv=>mk-on
+                      ) TO reported-so_header.
+
+            ENDLOOP.
+          ENDIF.
+
+
+        CATCH cx_rap_message_error INTO DATA(lv_cx).
+      ENDTRY.
+    ENDIF.
+
+    IF update IS NOT INITIAL.
+      CLEAR: lt_bapiitem,lt_bapiitemx,lt_schedule_lines,lt_schedule_linesx.
+      "call bapi update sales order
+      "CHANGE ITEM DATA
+      LOOP AT update-so_item ASSIGNING FIELD-SYMBOL(<fs_item_u>).
+        CLEAR: ls_bapiitem, ls_bapiitemx,ls_schedule_lines,ls_schedule_linesx.
+        ls_bapiitem-itm_number  = <fs_item_u>-salesdocumentitem.
+        ls_bapiitemx-itm_number = ls_bapiitem-itm_number.
+
+
+        IF <fs_item_u>-orderquantity IS NOT INITIAL AND <fs_item_u>-%control-orderquantity is not INITIAL.
+          ls_bapiitem-target_qty = <fs_item_u>-orderquantity.
+          ls_bapiitemx-target_qty = abap_true.
+        ENDIF.
+
+        IF <fs_item_u>-plant IS NOT INITIAL AND <fs_item_u>-%control-plant is not INITIAL.
+          ls_bapiitem-plant = <fs_item_u>-plant.
+          ls_bapiitemx-plant = abap_true.
+        ENDIF.
+        IF <fs_item_u>-shippingpoint IS NOT INITIAL AND <fs_item_u>-%control-shippingpoint is not INITIAL.
+          ls_bapiitem-ship_point = <fs_item_u>-shippingpoint.
+          ls_bapiitemx-ship_point = abap_true.
+        ENDIF.
+        IF <fs_item_u>-storagelocation IS NOT INITIAL AND <fs_item_u>-%control-storagelocation is not INITIAL.
+          ls_bapiitem-store_loc = <fs_item_u>-storagelocation.
+          ls_bapiitemx-store_loc = abap_true.
+        ENDIF.
+
+        ls_bapiitemx-updateflag = abap_true.
+
+        ls_schedule_lines-itm_number = ls_bapiitem-itm_number.
+        ls_schedule_lines-req_qty = <fs_item_u>-orderquantity.
+        ls_schedule_lines-sched_line = '0001'.
+        APPEND ls_schedule_lines TO lt_schedule_lines.
+
+        ls_schedule_linesx-itm_number = ls_bapiitem-itm_number.
+        ls_schedule_linesx-req_qty = 'X'.
+        ls_schedule_linesx-updateflag = 'U'.
+        ls_schedule_linesx-sched_line = '0001'.
+        APPEND ls_schedule_linesx TO lt_schedule_linesx.
+
+        APPEND ls_bapiitem TO lt_bapiitem.
+        APPEND ls_bapiitemx TO lt_bapiitemx.
+      ENDLOOP.
+
+      "TO CHANGE HEADER DATA
+      ls_bapiheadx-updateflag = 'U'.
+      "ls_BAPIHEADX-DLV_BLOCK  = 'X'.
+      ls_bapihead-sales_org   = update-so_header[ 1 ]-salesorganization.
+      IF ls_bapihead-sales_org IS NOT INITIAL.
+        ls_bapiheadx-sales_org = abap_true.
+      ENDIF.
+      " DistributionChannel   = vtweg;
+      ls_bapihead-distr_chan   = update-so_header[ 1 ]-distributionchannel.
+      IF ls_bapihead-distr_chan IS NOT INITIAL.
+        ls_bapiheadx-distr_chan = abap_true.
+      ENDIF.
+      " OrganizationDivision  = spart;
+      ls_bapihead-division   = update-so_header[ 1 ]-organizationdivision.
+      IF ls_bapihead-division IS NOT INITIAL.
+        ls_bapiheadx-division = abap_true.
+      ENDIF.
+      "SalesOffice           = vkbur;
+      ls_bapihead-sales_off   = update-so_header[ 1 ]-salesoffice.
+      IF ls_bapihead-sales_off IS NOT INITIAL.
+        ls_bapiheadx-sales_off = abap_true.
+      ENDIF.
+      "SalesGroup            = vkgrp;
+      ls_bapihead-sales_grp   = update-so_header[ 1 ]-salesgroup.
+      IF ls_bapihead-sales_grp IS NOT INITIAL.
+        ls_bapiheadx-sales_grp = abap_true.
+      ENDIF.
+
+      ls_bapihead-pmnttrms   = update-so_header[ 1 ]-CustomerPaymentTerms.
+      if ls_bapihead-pmnttrms  is NOT INITIAL AND update-so_header[ 1 ]-%control-CustomerPaymentTerms is not INITIAL.
+           ls_bapihead-pmnttrms = update-so_header[ 1 ]-customerpaymentterms.
+           ls_bapiheadx-pmnttrms = abap_true.
+      ENDIF.
+
+      IF update-so_header[ 1 ]-requesteddeliverydate IS NOT INITIAL.
+        ls_bapihead-req_date_h = update-so_header[ 1 ]-requesteddeliverydate.
+        ls_bapiheadx-req_date_h = abap_true.
+      ENDIF.
+
+      lv_vbeln = update-so_header[ 1 ]-salesdocument.
+      TRY.
+          CALL FUNCTION 'BAPI_SALESORDER_CHANGE' DESTINATION 'NONE'
+            EXPORTING
+              salesdocument    = lv_vbeln " (SALES AND DOCUMENT NO)
+              order_header_in  = ls_bapihead
+              order_header_inx = ls_bapiheadx
+            TABLES
+              return           = lt_message
+              order_item_in    = lt_bapiitem
+              order_item_inx   = lt_bapiitemx
+              schedule_lines   = lt_schedule_lines
+              schedule_linesx  = lt_schedule_linesx.
+          "process all messages
+          CLEAR lv_flag_success.
+
+          READ TABLE lt_message TRANSPORTING NO FIELDS
+                     WITH KEY type = 'E'.
+          IF  sy-subrc IS NOT INITIAL.
+            CALL FUNCTION 'BAPI_TRANSACTION_COMMIT' DESTINATION 'NONE'
+              EXPORTING
+                wait = 'X'.
+            lv_flag_success = abap_true.
+            READ TABLE lt_message INTO ls_msg
+              WITH KEY type = 'S' number = '311'.
+            APPEND VALUE #(  %pid = '0'
+                  %msg = new_message( id = 'V1'
+                                      number = '311'
+                  severity = if_abap_behv_message=>severity-success
+                  v1 = ls_msg-message )
+*                           %element-matnr_t = if_abap_behv=>mk-on
+                   ) TO reported-so_header.
+            EXIT.
+          ELSE.
+            CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK' DESTINATION 'NONE'.
+            LOOP AT lt_message ASSIGNING <ls_bapi_msg> WHERE type = 'E'.
+              "Convert all messages
+              "DATA(lo_behv_msg) = new_msg_from_bapi( <ls_bapi_msg> ).
+              "Stop on error
+              APPEND VALUE #( %pid        = <ls_bapi_msg>-id
+                     %fail-cause = if_abap_behv=>cause-unauthorized )
+            TO failed-so_header.
+              APPEND VALUE #(  %pid = <ls_bapi_msg>-id
+                     %msg = new_message( id = 'V1'
+                                         number = <ls_bapi_msg>-number
+                     severity = if_abap_behv_message=>severity-error
+                     v1 = <ls_bapi_msg>-message
+                     v2 = <ls_bapi_msg>-message_v1
+                     v3 = <ls_bapi_msg>-message_v2
+                     v4 = <ls_bapi_msg>-message_v3 )
+*                           %element-matnr_t = if_abap_behv=>mk-on
+                      ) TO reported-so_header.
+
+            ENDLOOP.
+          ENDIF.
+
+
+        CATCH cx_rap_message_error INTO lv_cx.
+      ENDTRY.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD cleanup_finalize.
+  ENDMETHOD.
+
+  METHOD is_create_granted.
+  "For validation
+    IF VKORG IS SUPPLIED AND VTWEG is SUPPLIED and SPART is SUPPLIED.
+      AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' FIELD VKORG
+          ID    'VTWEG' FIELD VTWEG
+          ID    'SPART' FIELD SPART
+          ID    'ACTVT'      FIELD '01'.
+      create_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+
+      "Simulation for full authorization
+      "(not to be used in productive code)
+      "create_granted = abap_true.
+    ELSE.
+       AUTHORITY-CHECK OBJECT 'V_VBKA_VKO'
+          ID    'VKORG' DUMMY
+          ID    'VTWEG' DUMMY
+          ID    'SPART' DUMMY
+          ID    'ACTVT'      FIELD '01'.
+      create_granted = COND #( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+    ENDIF.
+  ENDMETHOD.
+
+ENDCLASS.

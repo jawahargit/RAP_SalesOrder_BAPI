@@ -1,0 +1,39 @@
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales order Item'
+define view entity ZSO_I_Item
+  as select from I_SalesDocumentItem as Item
+  association to parent ZSO_I_Header as _Header 
+                        on $projection.SalesDocument = _Header.SalesDocument
+  association [0..1] to I_ShippingPointText as _ShippingPointText
+                        on $projection.ShippingPoint =  _ShippingPointText.ShippingPoint
+                        and _ShippingPointText.Language = $session.system_language                     
+{
+  key SalesDocument,
+  key SalesDocumentItem,
+      Material,
+      SalesDocumentItemText,
+      @Semantics.quantity.unitOfMeasure: 'OrderQuantityUnit'
+      OrderQuantity,
+      BaseUnit,
+      OrderQuantityUnit,
+      @Semantics.amount.currencyCode: 'TransactionCurrency'
+      NetPriceAmount,
+      @Semantics.amount.currencyCode: 'TransactionCurrency'
+      NetAmount,
+      TransactionCurrency,
+      Plant,
+      ShippingPoint,
+      StorageLocation,      
+      CreatedByUser,
+      @Semantics.systemDate.createdAt: true
+      CreationDate,
+      CreationTime,
+      @Semantics.systemDate.lastChangedAt: true
+      LastChangeDate,
+      /* associations */
+      _Header ,
+      _Plant,
+      _ShippingPointText,
+      _StorageLocation   
+}

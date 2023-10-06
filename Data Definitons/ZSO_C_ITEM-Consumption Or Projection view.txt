@@ -1,0 +1,48 @@
+@EndUserText.label: 'Projection entity of ZSO_I_ITEM'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@Search.searchable: true
+@Metadata.allowExtensions: true
+define view entity ZSO_C_ITEM as projection on ZSO_I_Item {
+    
+    key SalesDocument,
+    key SalesDocumentItem,
+    @Search.defaultSearchElement : true    
+    @Search.fuzzinessThreshold : 0.8 
+    Material,
+    SalesDocumentItemText,
+    OrderQuantity,
+    BaseUnit,
+    OrderQuantityUnit,
+    NetPriceAmount,
+    NetAmount,
+    TransactionCurrency,
+    //I_Plant
+     @Consumption.valueHelpDefinition: [{ entity: { name: 'I_Plant', element: 'Plant'}}]
+     @ObjectModel.text.element: ['PlantName']
+    Plant,
+    @Semantics.text: true
+    _Plant.PlantName,
+    //I_ShippingPoint
+     @Consumption.valueHelpDefinition: [{ entity: { name: 'I_ShippingPoint', element: 'ShippingPoint'}}]
+     @ObjectModel.text.element: ['ShippingPointName']
+    ShippingPoint,
+    @Semantics.text: true
+    _ShippingPointText.ShippingPointName,
+    //I_StorageLocation
+    @Consumption.valueHelpDefinition: [{ entity: { name: 'I_StorageLocation', element: 'StorageLocation'}}]
+     @ObjectModel.text.element: ['StorageLocationName']
+    StorageLocation, 
+     @Semantics.text: true
+    _StorageLocation.StorageLocationName,   
+    CreatedByUser,
+    CreationDate,
+    CreationTime,
+    LastChangeDate,
+    
+    /* Associations */
+    _Header :  redirected to parent ZSO_C_HEADER,
+    _Plant,
+    _ShippingPointText,
+    _StorageLocation 
+    
+}

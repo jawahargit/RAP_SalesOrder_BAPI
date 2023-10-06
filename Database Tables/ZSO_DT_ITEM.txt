@@ -1,0 +1,32 @@
+@EndUserText.label : 'Draft table for entity ZSO_I_ITEM'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zso_dt_item {
+  key mandt             : mandt not null;
+  key salesdocument     : vbeln_va not null;
+  key salesdocumentitem : posnr_va not null;
+  key draftuuid         : sdraft_uuid not null;
+  parentdraftuuid       : sdraft_uuid;
+  material              : matnr;
+  salesdocumentitemtext : arktx;
+  @Semantics.quantity.unitOfMeasure : 'zso_dt_item.orderquantityunit'
+  orderquantity         : kwmeng;
+  baseunit              : meins;
+  orderquantityunit     : vrkme;
+  @Semantics.amount.currencyCode : 'zso_dt_item.transactioncurrency'
+  netpriceamount        : netpr;
+  @Semantics.amount.currencyCode : 'zso_dt_item.transactioncurrency'
+  netamount             : netwr_ap;
+  transactioncurrency   : waerk;
+  plant                 : werks_ext;
+  shippingpoint         : vstel;
+  storagelocation       : lgort_d;
+  createdbyuser         : ernam;
+  creationdate          : erdat;
+  creationtime          : creation_time;
+  lastchangedate        : aedat;
+  "%admin"              : include sych_bdl_draft_admin_inc;
+
+}

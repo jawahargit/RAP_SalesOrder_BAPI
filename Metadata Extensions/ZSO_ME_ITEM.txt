@@ -1,0 +1,148 @@
+@Metadata.layer: #CUSTOMER
+@UI: {
+    headerInfo: {
+    typeName: 'Sales Order Item',
+    typeNamePlural: 'Sales Order Items',   
+   // title: { type: #STANDARD, label: 'Sales Order Item' },
+     title: { value: 'SalesDocumentItem'}
+    //description: { value: 'SalesDocumentItem' }
+    }
+}
+annotate view ZSO_C_ITEM
+    with 
+{
+@UI.facet: [
+{
+            label: 'Item Information',
+            id : 'ItemData',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'ItemData'
+        }
+/*        
+        ,{
+            label: 'Internal Information',
+            id : 'InternalInfo',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'InternalInfo'
+        }
+*/        
+    ]
+    
+    @UI: {
+      //hidden: true,
+      lineItem: [ { position: 10, label: 'Sales Order', importance: #HIGH } ],
+      selectionField: [ { position: 10 } ],
+      identification:[ { position: 10, label: 'Sales Order' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 10 }]
+    } 
+   SalesDocument;
+    @UI: {
+      lineItem: [ { position: 20, label: 'Item', importance: #HIGH } ],
+      selectionField: [ { position: 20 } ],
+      identification:[ { position: 20, label: 'Item' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 20 }]
+    } 
+   SalesDocumentItem;
+    @UI: {
+      lineItem: [ { position: 30, label: 'Material', importance: #HIGH } ],
+      selectionField: [ { position: 30 } ],
+      identification:[ { position: 30, label: 'Material' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 30 }]
+    }   
+   Material;
+    @UI: {
+      lineItem: [ { position: 40, label: 'Description', importance: #HIGH } ],
+      selectionField: [ { position: 40 } ],
+      identification:[ { position: 40, label: 'Description' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 40 }]
+    }  
+   SalesDocumentItemText;
+    @UI: {
+      lineItem: [ { position: 50, label: 'Quantity', importance: #HIGH } ],
+      selectionField: [ { position: 50 } ],
+      identification:[ { position: 50, label: 'Quantity' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 50 }]
+    } 
+   OrderQuantity;
+ /*   @UI: {
+      selectionField: [ { position: 60 } ],
+      identification:[ { position: 60, label: 'Sales Unit' } ]
+    }  
+   BaseUnit;*/
+    @UI: {
+      selectionField: [ { position: 60 } ],
+      identification:[ { position: 60, label: 'Sales Unit' } ]
+    }  
+   OrderQuantityUnit;
+    @UI: {
+      lineItem: [ { position: 70, label: 'Net Price', importance: #HIGH } ],
+      selectionField: [ { position: 70 } ],
+      identification:[ { position: 70, label: 'Net Price' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 60 }]
+    }  
+   NetPriceAmount;
+    @UI: {
+      lineItem: [ { position: 80, label: 'Net Value', importance: #HIGH } ],
+      selectionField: [ { position: 80 } ],
+      identification:[ { position: 80, label: 'Net Value' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 70 }]
+    }  
+   NetAmount;
+    @UI: {
+      selectionField: [ { position: 90 } ],
+      identification:[ { position: 90, label: 'Currency' } ]
+    } 
+   TransactionCurrency;
+    @UI: {
+      lineItem: [ { position: 100, label: 'Plant', importance: #HIGH } ],
+      selectionField: [ { position: 100 } ],
+      identification:[ { position: 100, label: 'Plant' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 80 }]
+    }  
+    @UI.textArrangement: #TEXT_LAST
+    Plant;
+    @UI: {
+      lineItem: [ { position: 110, label: 'Shipping Point', importance: #HIGH } ],
+      selectionField: [ { position: 110 } ],
+      identification:[ { position: 110, label: 'Shipping Point' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 90 }]
+    } 
+    @UI.textArrangement: #TEXT_LAST     
+    ShippingPoint;
+    @UI: {
+      lineItem: [ { position: 120, label: 'Stor. Location', importance: #HIGH } ],
+      selectionField: [ { position: 120 } ],
+      identification:[ { position: 120, label: 'Stor. Location' } ],
+      fieldGroup: [{ qualifier: 'ItemData', position: 100 }]
+    }   
+    @UI.textArrangement: #TEXT_LAST   
+    StorageLocation;    
+    @UI: {
+      lineItem: [ { position: 130, label: 'Created By', importance: #LOW } ],
+      selectionField: [ { position: 130 } ],
+      identification:[ { position: 130, label: 'Created By' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 10 }]
+    } 
+    CreatedByUser;
+    @UI: {
+      lineItem: [ { position: 140, label: 'Created On', importance: #LOW } ],
+      selectionField: [ { position: 140 } ],
+      identification:[ { position: 140, label: 'Created On' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 20 }]
+    } 
+   CreationDate;
+    @UI: {
+      lineItem: [ { position: 150, label: 'Created At', importance: #LOW } ],
+      selectionField: [ { position: 150 } ],
+      identification:[ { position: 150, label: 'Created At' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 30 }]
+    } 
+   CreationTime;
+    @UI: {
+      lineItem: [ { position: 160, label: 'Changed On', importance: #LOW } ],
+      selectionField: [ { position: 160 } ],
+      identification:[ { position: 160, label: 'Changed On' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 40 }]
+    }
+   LastChangeDate;
+}

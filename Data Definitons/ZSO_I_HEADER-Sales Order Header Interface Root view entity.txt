@@ -1,0 +1,84 @@
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Sales order Header'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define root view entity ZSO_I_Header
+  as select from I_SalesDocument as Header
+  composition [0..*] of ZSO_I_Item as _Item
+     association [0..1] to P_SDDocumentCompletePartners_1 as _shipTo 
+                            on  $projection.SalesDocument = _shipTo.SDDocument
+                           and _shipTo.SDDocumentItem     = '000000'
+                           and _shipTo.PartnerFunction     = 'WE'                                                                                      
+     association [0..1] to I_OverallSDProcessStatusText as  _OVERALLSTATUSTEXT    
+                           on  $projection.OverallSDProcessStatus = _OVERALLSTATUSTEXT.OverallSDProcessStatus  
+                           and _OVERALLSTATUSTEXT.Language = $session.system_language                  
+     association [0..1] to I_SalesDocumentTypeText as _SalesDocumentTypeText
+                          on $projection.SalesDocumentType = _SalesDocumentTypeText.SalesDocumentType  
+                          and _SalesDocumentTypeText.Language = $session.system_language    
+     association [0..1] to I_SalesOrganizationText as _SalesOrganizationText              
+                         on $projection.SalesOrganization = _SalesOrganizationText.SalesOrganization    
+                         and _SalesOrganizationText.Language = $session.system_language    
+     association [0..1] to I_DistributionChannelText as _DistributionChannelText       
+                        on $projection.DistributionChannel =  _DistributionChannelText.DistributionChannel  
+                        and _DistributionChannelText.Language = $session.system_language 
+     association [0..1] to I_DivisionText as _DivisionText      
+                        on $projection.OrganizationDivision =  _DivisionText.Division
+                        and _DivisionText.Language = $session.system_language    
+    //I_SalesGroupText
+     association [0..1] to I_SalesGroupText as _SalesGroupText      
+                        on $projection.SalesGroup =  _SalesGroupText.SalesGroup
+                        and _SalesGroupText.Language = $session.system_language      
+     association [0..1] to I_SalesOfficeText as _SalesOfficeText
+                          on $projection.SalesOffice =  _SalesOfficeText.SalesOffice
+                        and _SalesOfficeText.Language = $session.system_language 
+     association [0..1] to I_CustomerPaymentTermsText as _CustomerPaymentTermsText
+                        on $projection.CustomerPaymentTerms = _CustomerPaymentTermsText.CustomerPaymentTerms
+                        and _CustomerPaymentTermsText.Language  =  $session.system_language                    
+{
+  key SalesDocument ,        
+      SalesDocumentType,   
+      SalesOrganization,
+      DistributionChannel,
+      OrganizationDivision,
+      SalesOffice,
+      SalesGroup,
+      SoldToParty,
+      _shipTo.Customer as Customer,
+      //_vbak.vprgr,
+      PurchaseOrderByCustomer,
+      RequestedDeliveryDate,
+      CompleteDeliveryIsDefined,
+      CustomerPaymentTerms,
+      OverallSDProcessStatus,
+      CreatedByUser,
+      @Semantics.systemDate.createdAt: true
+      CreationDate,
+      CreationTime,
+      @Semantics.systemDate.lastChangedAt: true
+      LastChangeDate,     
+      @Semantics.systemDateTime.lastChangedAt: true
+      LastChangeDateTime, 
+      @Semantics.amount.currencyCode: 'TransactionCurrency'
+      TotalNetAmount,
+      TransactionCurrency,
+      /* associations */
+      _Item,
+      _shipTo,
+      _OVERALLSTATUSTEXT,
+      _SalesDocumentTypeText,
+      _SalesOrganizationText,
+      _DistributionChannelText,
+      _DivisionText,
+      _SalesGroupText,
+      _SalesOfficeText,
+      _SoldToParty,
+      _CustomerPaymentTermsText
+     // _vbak
+}
+where
+  SDDocumentCategory = 'C'

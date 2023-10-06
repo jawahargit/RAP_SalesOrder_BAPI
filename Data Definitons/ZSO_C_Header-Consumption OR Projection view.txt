@@ -1,0 +1,88 @@
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Projection entity to ZSO_I_HEADER'
+@Search.searchable: true
+@Metadata.allowExtensions: true
+define root view entity ZSO_C_HEADER
+  as projection on ZSO_I_Header
+ // association [0..1] to I_Customer_VH as _ShipToParty 
+ // on $projection.Customer = _ShipToParty.Customer
+{
+      @Search.defaultSearchElement: true
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SALESDOCUMENTBASIC', element: 'SalesDocument'} }]
+  key SalesDocument,
+      @Search.defaultSearchElement: true
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SalesDocumentType', element: 'SalesDocumentType'} }]      
+      @ObjectModel.text.element: ['SalesDocumentTypeName']  
+      SalesDocumentType,
+       @Semantics.text: true 
+      _SalesDocumentTypeText.SalesDocumentTypeName as SalesDocumentTypeName,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SalesOrganization', element: 'SalesOrganization'} }]
+      @ObjectModel.text.element: ['SalesOrganizationName'] 
+      SalesOrganization,
+      @Semantics.text: true 
+      _SalesOrganizationText.SalesOrganizationName as SalesOrganizationName,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_DistributionChannel', element: 'DistributionChannel'}}]
+      @ObjectModel.text.element: ['DistributionChannelName'] 
+      DistributionChannel,
+      @Semantics.text: true 
+      _DistributionChannelText.DistributionChannelName as DistributionChannelName,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_Division', element: 'Division'}}]
+      @ObjectModel.text.element: ['DivisionName']
+      OrganizationDivision,
+      @Semantics.text: true 
+      _DivisionText.DivisionName as DivisionName,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SalesOffice', element: 'SalesOffice'}}]
+      @ObjectModel.text.element: ['SalesOfficeName']
+      SalesOffice,
+       @Semantics.text: true 
+      _SalesOfficeText.SalesOfficeName as SalesOfficeName,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_SalesGroup', element: 'SalesGroup'}}]
+      @ObjectModel.text.element: ['SalesGroupName']
+      SalesGroup,
+      @Semantics.text: true 
+      _SalesGroupText.SalesGroupName as SalesGroupName,
+      @Consumption.valueHelpDefinition: [{ entity:  { name: 'I_Customer_VH',element: 'Customer' }}]
+      @ObjectModel.text.element: ['SoldToPartyName']
+      SoldToParty,
+      @Semantics.text: true
+      _SoldToParty.CustomerFullName as SoldToPartyName,      
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_Customer', element: 'Customer'}}]
+      //@ObjectModel.text.element: ['CustomerName']       
+      Customer,
+      //@Semantics.text: true
+     //_ShipToParty.CustomerName,  
+      PurchaseOrderByCustomer,
+      RequestedDeliveryDate,
+      CompleteDeliveryIsDefined,
+      @Consumption.valueHelpDefinition: [{ entity: { name: 'I_CustomerPaymentTerms', element: 'CustomerPaymentTerms'}}]
+      @ObjectModel.text.element: ['CustomerPaymentTermsName']
+      CustomerPaymentTerms,    
+      @Semantics.text: true
+      _CustomerPaymentTermsText.CustomerPaymentTermsName,
+      @ObjectModel.text.element: ['OverallSDProcessStatusDesc']  
+      @Search.defaultSearchElement: true
+      OverallSDProcessStatus,  
+      @Semantics.text: true 
+      _OVERALLSTATUSTEXT.OverallSDProcessStatusDesc as OverallSDProcessStatusDesc,
+      CreatedByUser,
+      CreationDate,
+      CreationTime,
+      LastChangeDate,
+      LastChangeDateTime,
+      TotalNetAmount,
+      TransactionCurrency,
+
+      /* Associations */
+      _Item : redirected to composition child ZSO_C_ITEM,
+      _shipTo,
+      _OVERALLSTATUSTEXT,
+      _SalesDocumentTypeText,
+      _SalesOrganizationText,
+      _DistributionChannelText,
+      _DivisionText,
+      _SalesGroupText,
+      _SalesOfficeText,
+      _SoldToParty,
+      _CustomerPaymentTermsText
+     // _ShipToParty
+}

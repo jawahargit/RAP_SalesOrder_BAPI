@@ -1,0 +1,33 @@
+@EndUserText.label : 'Draft table for entity ZSO_I_HEADER'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zso_dt_header {
+  key mandt                 : mandt not null;
+  key salesdocument         : vbeln_va not null;
+  key draftuuid             : sdraft_uuid not null;
+  salesdocumenttype         : auart;
+  salesorganization         : vkorg;
+  distributionchannel       : vtweg;
+  organizationdivision      : spart;
+  salesoffice               : vkbur;
+  salesgroup                : vkgrp;
+  soldtoparty               : kunag;
+  customer                  : kunnr;
+  purchaseorderbycustomer   : bstkd;
+  requesteddeliverydate     : reqd_delivery_date;
+  completedeliveryisdefined : autlf;
+  customerpaymentterms      : dzterm;
+  overallsdprocessstatus    : gbstk;
+  createdbyuser             : ernam;
+  creationdate              : erdat;
+  creationtime              : creation_time;
+  lastchangedate            : aedat;
+  lastchangedatetime        : timestampl;
+  @Semantics.amount.currencyCode : 'zso_dt_header.transactioncurrency'
+  totalnetamount            : netwr_ak;
+  transactioncurrency       : waerk;
+  "%admin"                  : include sych_bdl_draft_admin_inc;
+
+}

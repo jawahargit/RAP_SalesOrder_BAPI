@@ -1,0 +1,221 @@
+@Metadata.layer: #CUSTOMER
+@UI.headerInfo: {
+    typeName: 'Sales Order',
+    typeNamePlural: 'Sales Orders',
+    title: { value: 'SalesDocument'},
+    description: { value: 'SalesDocumentType' }
+    
+    }
+
+annotate view ZSO_C_HEADER
+    with 
+{
+@UI.facet: [
+/*        { id: 'idNet' ,
+             purpose: #HEADER,
+             type: #FIELDGROUP_REFERENCE,
+             targetQualifier: 'hdNetvalue'} ,*/
+        {
+            label: 'Status infomation',
+            targetQualifier: 'Status',
+            type : #FIELDGROUP_REFERENCE,
+            purpose: #HEADER
+        },
+        
+        {
+            label: 'Amount infomation',
+            targetQualifier: 'Amount',
+            type : #FIELDGROUP_REFERENCE,
+            purpose: #HEADER
+        },
+                
+        {
+           label: 'Header data',
+            id: 'Header',
+            type: #COLLECTION
+        },
+        {
+            label: 'Document Information',
+            id : 'HeaderData',
+            parentId : 'Header',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'HeaderData'
+        },
+        {
+            label: 'Organizational Information',
+            id : 'OrgInfo',
+            parentId : 'Header',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'OrgInfo'
+        },
+        {
+            label: 'Customer Information',
+            id : 'CustomerInfo',
+            parentId : 'Header',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'CustomerInfo'
+        },
+/*        
+        {
+            label: 'Internal Information',
+            id : 'InternalInfo',
+            parentId : 'Header',
+            type : #FIELDGROUP_REFERENCE,
+            targetQualifier : 'InternalInfo'
+        },
+*/        
+        {
+            label: 'Items',
+            purpose: #STANDARD,
+            id: 'Items',
+            type: #LINEITEM_REFERENCE,
+            targetElement: '_Item',
+            position:        20
+        }
+        
+    ]
+    
+     @UI:{ lineItem: [ { position: 10, label: 'Sales Order', importance: #HIGH } ],      
+      selectionField: [ { position: 10 } ],
+      dataPoint : { title: 'SalesDocument' },
+      identification:[ { position: 10 } ],
+      fieldGroup: [{ qualifier: 'HeaderData', position: 10 }]}
+    SalesDocument;
+    @UI: {  lineItem: [ { position: 20, label: 'Order Type', importance: #HIGH } ],
+      selectionField: [ { position: 20 } ],
+      identification:[ { position: 20, label: 'Order Type' } ],
+      fieldGroup: [{ qualifier: 'HeaderData', position: 20 }]}   
+    @UI.textArrangement: #TEXT_LAST     
+    SalesDocumentType;
+    @UI: {
+      lineItem: [ { position: 30, label: 'Sales Organization', importance: #HIGH } ],
+      selectionField: [ { position: 30 } ],
+      identification:[ { position: 30, label: 'Sales Organization' } ],
+      fieldGroup: [{ qualifier: 'OrgInfo', position: 10 }]
+    }
+    @UI.textArrangement: #TEXT_LAST  
+    SalesOrganization;
+    @UI: {
+      selectionField: [ { position: 40 } ],
+      identification:[ { position: 40, label: 'Distribution Channel' } ],
+      fieldGroup: [{ qualifier: 'OrgInfo', position: 20 }]
+    }  
+    @UI.textArrangement: #TEXT_LAST  
+    DistributionChannel;
+    @UI: {
+      selectionField: [ { position: 50 } ],
+      identification:[ { position: 50, label: 'Division' } ],
+      fieldGroup: [{ qualifier: 'OrgInfo', position: 30 }]
+    } 
+    @UI.textArrangement: #TEXT_LAST 
+    OrganizationDivision;
+    @UI: {
+      selectionField: [ { position: 60 } ],
+      identification:[ { position: 60, label: 'Sales Office' } ],
+      fieldGroup: [{ qualifier: 'OrgInfo', position: 40 }]
+    }    
+    @UI.textArrangement: #TEXT_LAST   
+    SalesOffice;
+    @UI: {
+      ///selectionField: [ { position: 70 } ],
+      identification:[ { position: 70, label: 'Sales Group' } ],
+      fieldGroup: [{ qualifier: 'OrgInfo', position: 50 }]
+    }   
+    @UI.textArrangement: #TEXT_LAST  
+    SalesGroup;
+    @UI: {
+      lineItem: [ { position: 80, label: 'Sold-to', importance: #HIGH } ],
+      //selectionField: [ { position: 80 } ],
+      identification:[ { position: 80, label: 'Sold-to' } ],
+      fieldGroup: [{ qualifier: 'CustomerInfo', position: 10 }]
+    }   
+    @UI.textArrangement: #TEXT_LAST    
+    SoldToParty;
+    @UI: {    
+      lineItem: [ { position: 90, label: 'Ship-to', importance: #HIGH } ],
+      selectionField: [ { position: 90 } ],
+      identification:[ { position: 90, label: 'Ship-to' } ],
+      fieldGroup: [{ qualifier: 'CustomerInfo', position: 20 }]
+    }    
+    @EndUserText.label: 'Ship-to Party' 
+    Customer;
+    @UI: {
+      lineItem: [ { position: 100, label: 'Customer Reference'} ],
+      //selectionField: [ { position: 100 } ],
+      identification:[ { position: 100, label: 'Customer Reference' } ],
+      fieldGroup: [{ qualifier: 'CustomerInfo', position: 30 }]
+    }     
+    PurchaseOrderByCustomer;    
+    @UI: {  lineItem: [ { position: 120, label: 'Req. Deliv.Date'} ],
+     // selectionField: [ { position: 120 } ],
+      identification:[ { position: 120, label: 'Req. Deliv.Date' } ],
+      fieldGroup: [{ qualifier: 'HeaderData', position: 30 }]}       
+    RequestedDeliveryDate;
+    @UI: {  lineItem: [ { position: 130, label: 'Complete Dlv.'} ],
+     // selectionField: [ { position: 130 } ],
+      identification:[ { position: 130, label: 'Complete Dlv.' } ],
+      //fieldGroup: [{ qualifier: 'HeaderData', position: 40 }]
+       dataPoint : { title: 'Complete Delivery' },
+      fieldGroup: [{ qualifier: 'Status', position: 20 }]
+      }       
+    CompleteDeliveryIsDefined;
+    @UI: {  lineItem: [ { position: 140, label: 'Pyt Terms' } ],
+     // selectionField: [ { position: 140 } ],
+      identification:[ { position: 140, label: 'Pyt Terms' } ],
+      fieldGroup: [{ qualifier: 'HeaderData', position: 50 }]}  
+    @UI.textArrangement: #TEXT_LAST        
+    CustomerPaymentTerms;
+    @UI: {
+      lineItem: [ { position: 110, label: 'Overall status',importance: #HIGH} ],
+      //selectionField: [ { position: 150 } ],
+      //identification:[ { position: 20, label: 'Overall status' } ]
+      dataPoint : { title: 'Overall status' },
+      fieldGroup: [{ qualifier: 'Status', position: 10 }]
+    }  
+     @UI.textArrangement: #TEXT_ONLY    
+      OverallSDProcessStatus;
+      @UI: {
+      lineItem: [ { position: 150, label: 'Created By'} ],
+     // selectionField: [ { position: 110 } ],
+      identification:[ { position: 150, label: 'Created By' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 10 }]
+    }    
+    CreatedByUser;
+    @UI: {
+      lineItem: [ { position: 160, label: 'Created On' } ],
+      //selectionField: [ { position: 120 } ],
+      identification:[ { position: 160, label: 'Created On' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 20 }]
+    }      
+    CreationDate;
+    @UI: {
+      //selectionField: [ { position: 130 } ],
+      identification:[ { position: 170, label: 'Created At' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 30 }]
+    }        
+    CreationTime;
+    @UI: {
+      //selectionField: [ { position: 140 } ],
+      identification:[ { position: 180, label: 'Changed On' } ],
+      fieldGroup: [{ qualifier: 'InternalInfo', position: 40 }]
+    }    
+    LastChangeDate;
+    @UI: {
+      lineItem: [ { position: 110, label: 'Total NetAmount', importance: #HIGH} ],
+      //selectionField: [ { position: 150 } ],
+      dataPoint : { title: 'Total NetAmount' },
+      identification:[ { position: 110, label: 'Total NetAmount' } ],
+      fieldGroup: [{ qualifier: 'Amount', position: 10 }]
+    }      
+    TotalNetAmount;
+  
+    //@UI: {
+   //   selectionField: [ { position: 160 } ],
+    //  identification:[ { position: 160, label: 'Currency' } ]
+   // } 
+   // TransactionCurrency;    
+    
+      @UI:{ lineItem:       [{ position: 30 }],
+        identification: [{ position: 30 }]}
+      TransactionCurrency;  
+}

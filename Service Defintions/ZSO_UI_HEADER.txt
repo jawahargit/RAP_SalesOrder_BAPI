@@ -1,0 +1,5 @@
+@EndUserText.label: 'Service definition for SO Header'
+define service ZSO_UI_HEADER {
+  expose ZSO_C_HEADER as Header;
+  expose ZSO_C_ITEM as Item;
+}
