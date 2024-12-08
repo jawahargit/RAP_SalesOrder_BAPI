@@ -1,0 +1,128 @@
+managed implementation in class zbp_so_i_header unique;
+strict ( 2 );
+with draft;
+define behavior for ZSO_I_Header alias SO_Header
+with unmanaged save
+//persistent table VBAK
+draft table ZSO_DT_HEADER
+lock master
+total etag LastChangeDateTime
+authorization master ( global , instance )
+etag master LastChangeDateTime
+late numbering  // <<<< must have when working with the BAPI
+{
+  create( precheck );
+  update( precheck, features : global  );
+  delete( precheck );
+
+ // action ( features : instance ) addLine result [1] $self;
+
+  association _Item {  create ( features : instance, authorization: update ) ; with draft; }
+  //association _Item {  create ;  with draft; }
+   //association _Item {  create ( features : instance, authorization: update ); }
+  field ( readonly ) SalesDocument, PurchaseOrderByCustomer,TransactionCurrency,TotalNetAmount;
+  //field ( features : instance )
+  //field ( readonly: update ) SalesDocumentType,SalesOrganization, DistributionChannel, OrganizationDivision;
+  field ( features : instance )
+  SalesDocumentType, SalesOrganization, DistributionChannel, OrganizationDivision;
+  field ( mandatory )   SoldToParty, Customer;
+  field ( features : instance ) OverallSDProcessStatus;
+  //Admin fields
+  field ( readonly ) CreatedByUser, CreationDate, CreationTime,LastChangeDate,LastChangeDateTime;
+  //Action
+  internal action reCalcTotalNetAmount;
+  //Validation
+  validation validateDocType on save { create; field SalesDocumentType; }
+  validation validateSalesOrg on save { create; update; field SalesOrganization; }
+  validation validateDistChannel on save { create; update; field DistributionChannel; }
+  validation validateDivision on save { create; update; field OrganizationDivision; }
+  validation validateSalesOffice on save { create; update; field SalesOffice; }
+  validation validateSalesGroup on save { create; update; field SalesGroup; }
+  validation validateSoldToParty on save { create; update; field SoldToParty; }
+  validation validateShipToParty on save { create; update; field Customer; }
+
+  draft action Resume;
+  draft action Edit;
+  draft action Activate;
+  draft action Discard;
+
+  draft determine action Prepare
+  {
+    validation validateDocType;
+    validation validateSalesOrg;
+    validation validateDistChannel;
+    validation validateDivision;
+    validation validateSalesOffice;
+    validation validateSalesGroup;
+    validation validateSoldToParty;
+    validation validateShipToParty;
+    validation SO_Item ~ validateMaterial;
+    validation SO_Item ~ validateQuantity;
+  }
+
+  mapping for VBAK
+  {
+      SalesDocument         = vbeln;
+      SalesDocumentType     = auart;
+      SalesOrganization     = vkorg;
+      DistributionChannel   = vtweg;
+      OrganizationDivision  = spart;
+      SalesOffice           = vkbur;
+      SalesGroup            = vkgrp;
+      SoldToParty           = kunnr;
+      //Customer;
+      //PurchaseOrderByCustomer;
+      CreatedByUser         = ernam;
+      CreationDate          = erdat;
+      CreationTime          = erzet;
+      LastChangeDate        = aedat;
+      LastChangeDateTime    = upd_tmstmp;
+      TotalNetAmount        = netwr;
+      TransactionCurrency   = waerk;
+    }
+
+}
+
+define behavior for ZSO_I_Item alias SO_Item
+with unmanaged save
+draft table ZSO_DT_ITEM
+etag dependent by _header
+lock dependent by _header
+authorization dependent by _header
+//etag master <field_name>
+late numbering  // <<<< must have when working with the BAPI
+{
+  //create;
+  update( precheck );
+  delete( precheck );
+  association _header { with draft; }
+  //association _header;
+
+  field ( readonly ) SalesDocument,SalesDocumentItem,SalesDocumentItemText,BaseUnit,
+                     OrderQuantityUnit,NetAmount;
+  field ( mandatory ) Material, OrderQuantity;
+  //admin fileds
+  field ( readonly ) CreatedByUser,CreationDate,CreationTime,LastChangeDate;
+  //determination
+  determination getInfoMaterial on modify { create; field Material;}
+  determination calculateTotalNetAmount on modify { create;  field OrderQuantity; }
+  //Validation
+  validation validateMaterial on save { create; field Material; }
+  validation validateQuantity on save { create; field OrderQuantity; }
+  mapping for vbap
+  {
+     SalesDocument          = vbeln;
+     SalesDocumentItem      = posnr;
+     Material               = matnr;
+     SalesDocumentItemText  = bstkd_ana;
+     OrderQuantity          = kwmeng;
+     BaseUnit               = meins;
+     OrderQuantityUnit      = vrkme;
+     NetAmount              = netwr;
+     TransactionCurrency    = waerk;
+     CreatedByUser          = ernam;
+     CreationDate           = erdat;
+     CreationTime           = erzet;
+     LastChangeDate         = aedat;
+  }
+}
