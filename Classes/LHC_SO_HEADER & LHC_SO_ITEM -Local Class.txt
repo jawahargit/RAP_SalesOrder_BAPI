@@ -904,7 +904,9 @@ CLASS lsc_zi_so_header IMPLEMENTATION.
         ls_bapiheadc-division = create-so_header[ 1 ]-organizationdivision.
         ls_bapiheadcx-division = abap_true.
       ENDIF.
-
+"Provide customer reference with PO - this is required for BAPI to create SO.
+       ls_bapiheadc-purch_no_c = '111111111'. " Dummy PO num
+       ls_bapiheadcx-purch_no_c = abap_true.
       LOOP AT create-so_item INTO DATA(ls_item).
         lv_item = lv_item + 10.
 
